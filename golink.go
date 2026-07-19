@@ -541,6 +541,7 @@ func serveHandler() http.Handler {
 	mux.HandleFunc("/.all", serveAll)
 	mux.HandleFunc("/.delete/", serveDelete)
 	mux.HandleFunc("/.search", serveSearch)
+	mux.HandleFunc("/.load", serveLoad)
 	mux.Handle("/.metrics", promhttp.Handler())
 	mux.Handle("/.static/", http.StripPrefix("/.", http.FileServer(http.FS(embeddedFS))))
 
@@ -1284,6 +1285,84 @@ func restoreLastSnapshot() error {
 		log.Printf("Restored %v links.", restored)
 	}
 	return bs.Err()
+}
+
+// loadResult summarizes the outcome of a /.load request.
+type loadResult struct {
+	Added   int      `json:"added"`
+	Updated int      `json:"updated"`
+	Skipped int      `json:"skipped"`
+	Denied  []string `json:"denied,omitempty"`
+}
+
+// serveLoad merges a snapshot (in the JSON lines format written by the
+// /.export handler) from the request body into the link database. New links
+// are added, and existing links are updated if the snapshot's LastEdit is
+// newer than the stored link's. All other links are skipped. Links that the
+// caller does not have permission to edit are reported in the response.
+func serveLoad(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if *readonly {
+		http.Error(w, "golink is in read-only mode", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cu, err := currentUser(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !isRequestAuthorized(r, cu, newShortName) {
+		http.Error(w, "invalid XSRF token", http.StatusBadRequest)
+		return
+	}
+
+	var result loadResult
+	bs := bufio.NewScanner(r.Body)
+	for bs.Scan() {
+		link := new(Link)
+		if err := json.Unmarshal(bs.Bytes(), link); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if link.Short == "" {
+			continue
+		}
+		existing, err := db.Load(link.Short)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		switch {
+		case existing == nil:
+			if err := db.Save(link); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			result.Added++
+			totalLinkCount.Inc()
+		case !link.LastEdit.After(existing.LastEdit):
+			result.Skipped++
+		case !canEditLink(r.Context(), existing, cu):
+			result.Denied = append(result.Denied, existing.Short)
+		default:
+			if err := db.Save(link); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			result.Updated++
+		}
+	}
+	if err := bs.Err(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 func resolveLink(link *url.URL) (*url.URL, error) {

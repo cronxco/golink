@@ -293,6 +293,148 @@ func TestServeSave(t *testing.T) {
 	}
 }
 
+func TestServeLoad(t *testing.T) {
+	t1 := time.Unix(100, 0).UTC()
+	t2 := time.Unix(200, 0).UTC()
+
+	line := func(link Link) string {
+		return string(must.Get(json.Marshal(link))) + "\n"
+	}
+
+	tests := []struct {
+		name        string
+		seed        []*Link
+		method      string
+		body        string
+		secHeader   bool
+		currentUser func(*http.Request) (user, error)
+		wantStatus  int
+		wantResult  loadResult
+		wantLong    map[string]string // short name -> expected Long after load
+	}{
+		{
+			name:       "add new link",
+			body:       line(Link{Short: "who", Long: "http://who/", LastEdit: t1}),
+			secHeader:  true,
+			wantStatus: http.StatusOK,
+			wantResult: loadResult{Added: 1},
+			wantLong:   map[string]string{"who": "http://who/"},
+		},
+		{
+			name:       "update when snapshot is newer",
+			seed:       []*Link{{Short: "who", Long: "/old", LastEdit: t1, Owner: "foo@example.com"}},
+			body:       line(Link{Short: "who", Long: "/new", LastEdit: t2, Owner: "foo@example.com"}),
+			secHeader:  true,
+			wantStatus: http.StatusOK,
+			wantResult: loadResult{Updated: 1},
+			wantLong:   map[string]string{"who": "/new"},
+		},
+		{
+			name:       "skip when snapshot is not newer",
+			seed:       []*Link{{Short: "who", Long: "/old", LastEdit: t1, Owner: "foo@example.com"}},
+			body:       line(Link{Short: "who", Long: "/new", LastEdit: t1, Owner: "foo@example.com"}),
+			secHeader:  true,
+			wantStatus: http.StatusOK,
+			wantResult: loadResult{Skipped: 1},
+			wantLong:   map[string]string{"who": "/old"},
+		},
+		{
+			name:       "deny updating another's link",
+			seed:       []*Link{{Short: "who", Long: "/old", LastEdit: t1, Owner: "bar@example.com"}},
+			body:       line(Link{Short: "who", Long: "/new", LastEdit: t2, Owner: "bar@example.com"}),
+			secHeader:  true,
+			wantStatus: http.StatusOK,
+			wantResult: loadResult{Denied: []string{"who"}},
+			wantLong:   map[string]string{"who": "/old"},
+		},
+		{
+			name:        "admins can update any link",
+			seed:        []*Link{{Short: "who", Long: "/old", LastEdit: t1, Owner: "bar@example.com"}},
+			body:        line(Link{Short: "who", Long: "/new", LastEdit: t2, Owner: "bar@example.com"}),
+			secHeader:   true,
+			currentUser: func(*http.Request) (user, error) { return user{login: "admin@example.com", isAdmin: true}, nil },
+			wantStatus:  http.StatusOK,
+			wantResult:  loadResult{Updated: 1},
+			wantLong:    map[string]string{"who": "/new"},
+		},
+		{
+			name:       "unauthorized without xsrf or Sec-Golink",
+			body:       line(Link{Short: "who", Long: "http://who/", LastEdit: t1}),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "reject non-POST",
+			method:     "GET",
+			secHeader:  true,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "reject malformed snapshot",
+			body:       "not json\n",
+			secHeader:  true,
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var err error
+			db, err = NewSQLiteDB(":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, link := range tt.seed {
+				if err := db.Save(link); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if tt.currentUser != nil {
+				oldCurrentUser := currentUser
+				currentUser = tt.currentUser
+				t.Cleanup(func() {
+					currentUser = oldCurrentUser
+				})
+			}
+
+			method := tt.method
+			if method == "" {
+				method = "POST"
+			}
+			r := httptest.NewRequest(method, "/.load", strings.NewReader(tt.body))
+			if tt.secHeader {
+				r.Header.Set(secHeaderName, "1")
+			}
+			w := httptest.NewRecorder()
+			serveLoad(w, r)
+
+			if w.Code != tt.wantStatus {
+				t.Fatalf("serveLoad = %d; want %d: %s", w.Code, tt.wantStatus, w.Body)
+			}
+			if w.Code != http.StatusOK {
+				return
+			}
+
+			var got loadResult
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tt.wantResult, got); diff != "" {
+				t.Errorf("loadResult mismatch (-want +got):\n%s", diff)
+			}
+			for short, want := range tt.wantLong {
+				link, err := db.Load(short)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if link.Long != want {
+					t.Errorf("link %q Long = %q; want %q", short, link.Long, want)
+				}
+			}
+		})
+	}
+}
+
 func TestServeDelete(t *testing.T) {
 	var err error
 	db, err = NewSQLiteDB(":memory:")

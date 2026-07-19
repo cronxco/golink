@@ -316,6 +316,15 @@ Only links that don't already exist in the database will be added.
 
 [JSON lines]: https://jsonlines.org/
 
+You can also merge a snapshot into a running golink server by posting it to <http://go/.load>:
+
+    curl -H "Sec-Golink: 1" --data-binary @links.json http://go/.load
+
+New links are added, and existing links are updated if the snapshot's `LastEdit`
+is newer than the stored link's; all other links are left untouched.
+Links owned by other users can only be updated by admins, and are otherwise
+reported in the `denied` field of the JSON response.
+
 You can also resolve links locally using a snapshot file:
 
     golink -resolve-from-backup links.json go/link
