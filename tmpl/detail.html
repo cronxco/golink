@@ -1,6 +1,6 @@
 {{ define "main" }}
    {{ if .AlreadyExists }}
-   <div class="py-2 px-4 mb-6 rounded-md border text-sm border-orange-50 bg-orange-0 text-gray-700">
+   <div class="py-2 px-4 mb-6 rounded-md border text-sm border-orange-50 dark:border-orange-700 bg-orange-0 dark:bg-orange-800 text-gray-700 dark:text-gray-300">
      A link with this short name already exists.{{ if .Editable }} You can edit it below.{{ end }}
    </div>
    {{ end }}
@@ -11,18 +11,18 @@
       <input type="hidden" name="xsrf" value="{{ .XSRF }}" />
       <div class="flex flex-wrap">
         <div class="flex">
-          <label for=short class="flex my-2 px-2 items-center bg-gray-100 border border-r-0 border-gray-300 rounded-l-md text-gray-700">http://{{go}}/</label>
+          <label for=short class="flex my-2 px-2 items-center bg-gray-100 dark:bg-gray-800 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l-md text-gray-700 dark:text-gray-300">http://{{go}}/</label>
           <input id=short name=short required type=text size=15 placeholder="shortname" value="{{.Link.Short}}" pattern="\w[\w\-\.]*" title="Must start with letter or number; may contain letters, numbers, dashes, and periods."
-            class="p-2 my-2 rounded-r-md border-gray-300 placeholder:text-gray-400 disabled:bg-gray-100">
+            class="p-2 my-2 rounded-r-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:bg-gray-100 dark:disabled:bg-gray-700">
           <span class="flex m-2 items-center">&rarr;</span>
         </div>
-        <input name=long required type=text size=40 placeholder="https://destination-url" value="{{.Link.Long}}" class="p-2 my-2 mr-2 max-w-full rounded-md border-gray-300 placeholder:text-gray-400 disabled:bg-gray-100">
+        <input name=long required type=text size=40 placeholder="https://destination-url" value="{{.Link.Long}}" class="p-2 my-2 mr-2 max-w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:bg-gray-100 dark:disabled:bg-gray-700">
       </div>
 
-      <p class="text-sm text-gray-500"><a class="text-blue-600 hover:underline" href="/.help">Help and advanced options</a></p>
+      <p class="text-sm text-gray-500 dark:text-gray-400"><a class="text-blue-600 dark:text-blue-200 hover:underline" href="/.help">Help and advanced options</a></p>
 
       <label for=owner class="text-sm font-bold block mt-4">Owner</label>
-      <input id=owner name=owner required type=text size=25 placeholder="Owner" value="{{.Link.Owner}}" class="p-2 rounded-md border-gray-300 placeholder:text-gray-400 disabled:bg-gray-100">
+      <input id=owner name=owner required type=text size=25 placeholder="Owner" value="{{.Link.Owner}}" class="p-2 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 disabled:bg-gray-100 dark:disabled:bg-gray-700">
 
       <dl>
         <dt class="text-sm font-bold mt-6">Date Created</dt>
@@ -35,7 +35,7 @@
       <button type=submit class="py-2 px-4 my-4 rounded-md bg-blue-500 border-blue-500 text-white hover:bg-blue-600 hover:border-blue-600">Update</button>
     </form>
 
-    <h3 class="text-lg font-bold pb-2 pt-4 text-red-500">Danger Zone</h3>
+    <h3 class="text-lg font-bold pb-2 pt-4 text-red-500 dark:text-red-300">Danger Zone</h3>
 
     <form method="POST" action="/.delete/{{.Link.Short}}">
       <input type="hidden" name="xsrf" value="{{ .XSRF }}" />
@@ -45,7 +45,7 @@
     {{ else }}
     <dl>
       <dt class="text-sm font-bold mt-6">Name</dt>
-      <dd><a class="text-blue-600 hover:underline" href="/{{.Link.Short}}">{{go}}/{{.Link.Short}}</a></dd>
+      <dd><a class="text-blue-600 dark:text-blue-200 hover:underline" href="/{{.Link.Short}}">{{go}}/{{.Link.Short}}</a></dd>
 
       <dt class="text-sm font-bold mt-6">Destination</dt>
       <dd>{{.Link.Long}}</dd>
